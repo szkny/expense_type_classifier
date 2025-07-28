@@ -30,7 +30,7 @@ def main(args: argparse.Namespace) -> None:
     if pca_enabled:
         args.re_train = True
     df = get_expense_history()
-    if args.re_train:
+    if not args.predict_only:
         train(df_train=df, pca_enabled=pca_enabled)
     log.debug(f"--json: {args.json_data}")
     input_data = json.loads(args.json_data)
@@ -179,12 +179,12 @@ if __name__ == "__main__":
         help="expense data in JSON format",
     )
     parser.add_argument(
-        "-r",
-        "--re-train",
-        dest="re_train",
+        "-p",
+        "--predict-only",
+        dest="predict_only",
         action="store_true",
-        help="re-train the model with the latest expense history",
-        default=True,
+        help="predict without re-train the model with the latest expense history",
+        default=False,
     )
     parser.add_argument(
         "-p",
