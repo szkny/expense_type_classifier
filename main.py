@@ -26,19 +26,19 @@ log.basicConfig(
 def main(args: argparse.Namespace) -> None:
     log.info("start 'main' method")
     # # download_spreadsheet()
-    pca_enabled = args.pca_enabled
-    if pca_enabled:
+    dim_reduction = args.dim_reduction
+    if dim_reduction:
         args.re_train = True
     df = get_expense_history()
     if not args.predict_only:
-        train(df_train=df, pca_enabled=pca_enabled)
+        train(df_train=df, dim_reduction=dim_reduction)
     log.debug(f"--json: {args.json_data}")
     input_data = json.loads(args.json_data)
     log.debug(f"loaded json data: {input_data}")
     predicted_type = predict(
         memo=input_data.get("memo", NA_TEXT),
         amount=input_data.get("amount", 0),
-        pca_enabled=pca_enabled,
+        dim_reduction=dim_reduction,
     )
     log.debug(f"Predicted type: {predicted_type}")
     # 予測結果をJSON形式で出力
@@ -60,7 +60,7 @@ def get_expense_history() -> pd.DataFrame:
     return df
 
 
-def train(df_train: pd.DataFrame, pca_enabled=False) -> None:
+def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
     log.info("start 'train_and_save_model' method")
     df = df_train.copy()
     df = df.fillna(NA_TEXT)
@@ -69,7 +69,7 @@ def train(df_train: pd.DataFrame, pca_enabled=False) -> None:
     vectorizer = TfidfVectorizer()
     dim_reducer = PCA(n_components=10)
     X = vectorizer.fit_transform(df["memo"]).toarray()  # TF-IDFベクトル化
-    if pca_enabled:
+    if dim_reduction:
         X = dim_reducer.fit_transform(X)  # PCAで次元削減
     X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
     y = df["type"]  # 正解ラベル
@@ -83,23 +83,23 @@ def train(df_train: pd.DataFrame, pca_enabled=False) -> None:
 
     # 保存
     joblib.dump(clf, "cache/classifier.joblib")
-    if pca_enabled:
+    if dim_reduction:
         joblib.dump(dim_reducer, "cache/dim_reducer.joblib")
     joblib.dump(vectorizer, "cache/vectorizer.joblib")
     log.info("end 'train_and_save_model' method")
 
 
-def predict(memo: str, amount: int, pca_enabled=False) -> str:
+def predict(memo: str, amount: int, dim_reduction=False) -> str:
     # モデルとベクトルライザの読み込み
     clf = joblib.load("cache/classifier.joblib")
-    if pca_enabled:
+    if dim_reduction:
         dim_reducer = joblib.load("cache/dim_reducer.joblib")
     vectorizer = joblib.load("cache/vectorizer.joblib")
     if not memo or (type(memo) is float and np.isnan(memo)):
         memo = NA_TEXT
     # store_nameをベクトル化
     X_new = vectorizer.transform([memo]).toarray()  # TF-IDFベクトル化
-    if pca_enabled:
+    if dim_reduction:
         X_new = dim_reducer.transform(X_new)  # PCAで次元削減
     X_new = np.concatenate([X_new, [[amount]]], axis=1)  # ベクトルと金額を結合
     # カテゴリ予測
@@ -187,9 +187,9 @@ if __name__ == "__main__":
         default=False,
     )
     parser.add_argument(
-        "-p",
-        "--pca",
-        dest="pca_enabled",
+        "-d",
+        "--dim-reduction",
+        dest="dim_reduction",
         action="store_true",
         help="enable PCA for dimensionality reduction",
         default=False,
