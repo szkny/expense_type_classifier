@@ -167,7 +167,7 @@ def download_spreadsheet() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="家計簿スプレッドシートに自動で書き込みを行うバッチプログラム"
+        description="Expense Type Prediction using Machine Learning"
     )
     parser.add_argument(
         "-j",
