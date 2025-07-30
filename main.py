@@ -8,6 +8,7 @@ import pandas as pd
 import logging as log
 from google.oauth2 import service_account
 
+from janome.tokenizer import Tokenizer
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -30,6 +31,7 @@ def main(args: argparse.Namespace) -> None:
     if dim_reduction:
         args.re_train = True
     df = get_expense_history()
+    df = preprocess_data(df)
     if not args.predict_only:
         train(df_train=df, dim_reduction=dim_reduction)
     log.debug(f"--json: {args.json_data}")
@@ -53,10 +55,33 @@ def main(args: argparse.Namespace) -> None:
 
 
 def get_expense_history() -> pd.DataFrame:
+    log.info("start 'get_expense_history' method")
     df = pd.read_csv(HOME + "/tmp/expense/expense_history.log", index_col=None)
     df = df.T.reset_index().T
     df.columns = pd.Index(["date", "type", "memo", "amount"])
     df.index = pd.Index(range(len(df)))
+    log.debug(f"Expense history DataFrame:\n{df.head()}")
+    log.info("end 'get_expense_history' method")
+    return df
+
+
+def tokenize_text(text: str, tokenizer: Tokenizer) -> str:
+    if not isinstance(text, str) or text.strip() == "":
+        return NA_TEXT
+    processed_text = " ".join(list(tokenizer.tokenize(text, wakati=True)))
+    return processed_text
+
+
+def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
+    log.info("start 'preprocess_data' method")
+    # 日付をdatetime型に変換
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    # 金額を数値型に変換
+    df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0).astype(int)
+    # メモを分かち書きにする
+    df["memo"] = df["memo"].apply(lambda s: tokenize_text(s, Tokenizer()))
+    log.debug(f"Processed DataFrame:\n{df.head()}")
+    log.info("end 'preprocess_data' method")
     return df
 
 
@@ -69,6 +94,7 @@ def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
     vectorizer = TfidfVectorizer()
     dim_reducer = PCA(n_components=10)
     X = vectorizer.fit_transform(df["memo"]).toarray()  # TF-IDFベクトル化
+    log.debug(f"vectorizer features: {vectorizer.get_feature_names_out()}")
     if dim_reduction:
         X = dim_reducer.fit_transform(X)  # PCAで次元削減
     X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
@@ -90,13 +116,14 @@ def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
 
 
 def predict(memo: str, amount: int, dim_reduction=False) -> str:
-    # モデルとベクトルライザの読み込み
+    log.info("start 'predict' method")
+    # モデルとvectorizerの読み込み
     clf = joblib.load("cache/classifier.joblib")
     if dim_reduction:
         dim_reducer = joblib.load("cache/dim_reducer.joblib")
     vectorizer = joblib.load("cache/vectorizer.joblib")
-    if not memo or (type(memo) is float and np.isnan(memo)):
-        memo = NA_TEXT
+    # メモを分かち書きにする
+    memo = tokenize_text(memo, Tokenizer())
     # store_nameをベクトル化
     X_new = vectorizer.transform([memo]).toarray()  # TF-IDFベクトル化
     if dim_reduction:
@@ -104,6 +131,7 @@ def predict(memo: str, amount: int, dim_reduction=False) -> str:
     X_new = np.concatenate([X_new, [[amount]]], axis=1)  # ベクトルと金額を結合
     # カテゴリ予測
     predicted_type = clf.predict(X_new)[0]
+    log.info("end 'predict' method")
     return predicted_type
 
 
