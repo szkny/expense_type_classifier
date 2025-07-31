@@ -30,9 +30,9 @@ def main(args: argparse.Namespace) -> None:
     dim_reduction = args.dim_reduction
     if dim_reduction:
         args.re_train = True
-    df = get_expense_history()
-    df = preprocess_data(df)
     if not args.predict_only:
+        df = get_expense_history()
+        df = preprocess_data(df)
         train(df_train=df, dim_reduction=dim_reduction)
     log.debug(f"--json: {args.json_data}")
     input_data = json.loads(args.json_data)
