@@ -79,7 +79,8 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     # 金額を数値型に変換
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0).astype(int)
     # メモを分かち書きにする
-    df["memo"] = df["memo"].apply(lambda s: tokenize_text(s, Tokenizer()))
+    tokenizer = Tokenizer()
+    df["memo"] = df["memo"].apply(lambda s: tokenize_text(s, tokenizer))
     log.debug(f"Processed DataFrame:\n{df.head()}")
     log.info("end 'preprocess_data' method")
     return df
@@ -90,12 +91,12 @@ def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
     df = df_train.copy()
     df = df.fillna(NA_TEXT)
     amount = df[["amount"]].astype(int).values
-    # store_nameのテキストをTF-IDFベクトル化
+    # memoのテキストをTF-IDFベクトル化
     vectorizer = TfidfVectorizer()
-    dim_reducer = PCA(n_components=10)
     X = vectorizer.fit_transform(df["memo"]).toarray()  # TF-IDFベクトル化
     log.debug(f"vectorizer features: {vectorizer.get_feature_names_out()}")
     if dim_reduction:
+        dim_reducer = PCA(n_components=10)
         X = dim_reducer.fit_transform(X)  # PCAで次元削減
     X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
     y = df["type"]  # 正解ラベル
