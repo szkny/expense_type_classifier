@@ -1,0 +1,22 @@
+[project]
+name = "expense_type_classifier"
+version = "0.1.0"
+description = "type classifier for expenses"
+authors = [{ name="Sohei.Suzuki", email="s.s1008@gmail.com" }]
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+expense_type_classifier = "expense_type_classifier.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+

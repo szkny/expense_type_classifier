@@ -1,4 +1,0 @@
-#!/data/data/com.termux/files/usr/bin/zsh
-cd ~/Project/expense_type_classification
-python main.py $@
-

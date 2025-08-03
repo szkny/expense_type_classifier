@@ -1,6 +1,7 @@
 import os
 import json
 import joblib
+import pathlib
 import gspread
 import argparse
 import numpy as np
@@ -13,7 +14,7 @@ from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-
+BASE_DIR = pathlib.Path(__file__).parent
 LOG_LEVEL = os.getenv("LOG_LEVEL", "ERROR").upper()
 HOME = os.getenv("HOME") or "~"
 NA_TEXT = "No Memo"
@@ -24,8 +25,40 @@ log.basicConfig(
 )
 
 
-def main(args: argparse.Namespace) -> None:
+def main() -> None:
     log.info("start 'main' method")
+
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(
+        description="Expense Type Prediction using Machine Learning"
+    )
+    parser.add_argument(
+        "-j",
+        "--json",
+        dest="json_data",
+        type=str,
+        required=True,
+        default=None,
+        help="expense data in JSON format",
+    )
+    parser.add_argument(
+        "-p",
+        "--predict-only",
+        dest="predict_only",
+        action="store_true",
+        help="predict without re-train the model with the latest expense history",
+        default=False,
+    )
+    parser.add_argument(
+        "-d",
+        "--dim-reduction",
+        dest="dim_reduction",
+        action="store_true",
+        help="enable PCA for dimensionality reduction",
+        default=False,
+    )
+    args = parser.parse_args()
+
     # # download_spreadsheet()
     dim_reduction = args.dim_reduction
     if dim_reduction:
@@ -109,20 +142,21 @@ def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
     log.info("Model trained successfully")
 
     # 保存
-    joblib.dump(clf, "cache/classifier.joblib")
+    os.makedirs(BASE_DIR / "cache", exist_ok=True)
+    joblib.dump(clf, BASE_DIR / "cache/classifier.joblib")
     if dim_reduction:
-        joblib.dump(dim_reducer, "cache/dim_reducer.joblib")
-    joblib.dump(vectorizer, "cache/vectorizer.joblib")
+        joblib.dump(dim_reducer, BASE_DIR / "cache/dim_reducer.joblib")
+    joblib.dump(vectorizer, BASE_DIR / "cache/vectorizer.joblib")
     log.info("end 'train_and_save_model' method")
 
 
 def predict(memo: str, amount: int, dim_reduction=False) -> str:
     log.info("start 'predict' method")
     # モデルとvectorizerの読み込み
-    clf = joblib.load("cache/classifier.joblib")
+    clf = joblib.load(BASE_DIR / "cache/classifier.joblib")
     if dim_reduction:
-        dim_reducer = joblib.load("cache/dim_reducer.joblib")
-    vectorizer = joblib.load("cache/vectorizer.joblib")
+        dim_reducer = joblib.load(BASE_DIR / "cache/dim_reducer.joblib")
+    vectorizer = joblib.load(BASE_DIR / "cache/vectorizer.joblib")
     # メモを分かち書きにする
     memo = tokenize_text(memo, Tokenizer())
     # store_nameをベクトル化
@@ -195,33 +229,4 @@ def download_spreadsheet() -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Expense Type Prediction using Machine Learning"
-    )
-    parser.add_argument(
-        "-j",
-        "--json",
-        dest="json_data",
-        type=str,
-        required=True,
-        default=None,
-        help="expense data in JSON format",
-    )
-    parser.add_argument(
-        "-p",
-        "--predict-only",
-        dest="predict_only",
-        action="store_true",
-        help="predict without re-train the model with the latest expense history",
-        default=False,
-    )
-    parser.add_argument(
-        "-d",
-        "--dim-reduction",
-        dest="dim_reduction",
-        action="store_true",
-        help="enable PCA for dimensionality reduction",
-        default=False,
-    )
-    args = parser.parse_args()
-    main(args)
+    main()
