@@ -5,7 +5,16 @@ description = "type classifier for expenses"
 authors = [{ name="Sohei.Suzuki", email="s.s1008@gmail.com" }]
 readme = "README.md"
 license = { text = "MIT" }
-dependencies = []
+dependencies = [
+    "joblib",
+    "gspread",
+    "numpy",
+    "pandas",
+    "platformdirs",
+    "google-auth",
+    "janome",
+    "scikit-learn",
+]
 
 [project.scripts]
 expense_type_classifier = "expense_type_classifier.main:main"
