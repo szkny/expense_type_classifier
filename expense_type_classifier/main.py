@@ -114,7 +114,9 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     # 日付をdatetime型に変換
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     # 金額を数値型に変換
-    df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0).astype(int)
+    df["amount"] = (
+        pd.to_numeric(df["amount"], errors="coerce").fillna(0).astype(int)
+    )
     # メモを分かち書きにする
     tokenizer = Tokenizer()
     df["memo"] = df["memo"].apply(lambda s: tokenize_text(s, tokenizer))
@@ -226,7 +228,9 @@ def download_spreadsheet() -> None:
     # データをCSVに保存
     df = pd.DataFrame(data).head(24).set_index("日付").T
     df.index.name = "date"
-    df.columns = pd.Index(list(df.columns[:-4]) + [f"memo{i+1}" for i in range(4)])
+    df.columns = pd.Index(
+        list(df.columns[:-4]) + [f"memo{i+1}" for i in range(4)]
+    )
     log.debug(f"DataFrame created: {df.head()}")
     df.to_csv("./train_data/spreadsheet_data.csv", index=True)
     log.info("end 'download_spreadsheet' method")
