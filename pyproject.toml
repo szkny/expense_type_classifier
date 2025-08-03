@@ -6,14 +6,14 @@ authors = [{ name="Sohei.Suzuki", email="s.s1008@gmail.com" }]
 readme = "README.md"
 license = { text = "MIT" }
 dependencies = [
-    "joblib",
-    "gspread",
-    "numpy",
-    "pandas",
-    "platformdirs",
-    "google-auth",
-    "janome",
-    "scikit-learn",
+    "joblib>=1.2.0",
+    "gspread>=6.0.0",
+    "numpy>=2.0.0",
+    "pandas>=2.0.0",
+    "platformdirs>=4.0.0",
+    "google-auth>=2.20.0",
+    "janome>=0.4.0",
+    "scikit-learn>=1.5.0",
 ]
 
 [project.scripts]
