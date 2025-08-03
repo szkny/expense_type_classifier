@@ -7,6 +7,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import logging as log
+from platformdirs import user_cache_dir
 from google.oauth2 import service_account
 
 from janome.tokenizer import Tokenizer
@@ -14,7 +15,10 @@ from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-BASE_DIR = pathlib.Path(__file__).parent
+APP_NAME = "expense_type_classifier"
+CACHE_PATH = pathlib.Path(user_cache_dir(APP_NAME))
+CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "ERROR").upper()
 HOME = os.getenv("HOME") or "~"
 NA_TEXT = "No Memo"
@@ -142,21 +146,21 @@ def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
     log.info("Model trained successfully")
 
     # 保存
-    os.makedirs(BASE_DIR / "cache", exist_ok=True)
-    joblib.dump(clf, BASE_DIR / "cache/classifier.joblib")
+    os.makedirs(CACHE_PATH, exist_ok=True)
+    joblib.dump(clf, CACHE_PATH / "classifier.joblib")
     if dim_reduction:
-        joblib.dump(dim_reducer, BASE_DIR / "cache/dim_reducer.joblib")
-    joblib.dump(vectorizer, BASE_DIR / "cache/vectorizer.joblib")
+        joblib.dump(dim_reducer, CACHE_PATH / "dim_reducer.joblib")
+    joblib.dump(vectorizer, CACHE_PATH / "vectorizer.joblib")
     log.info("end 'train_and_save_model' method")
 
 
 def predict(memo: str, amount: int, dim_reduction=False) -> str:
     log.info("start 'predict' method")
     # モデルとvectorizerの読み込み
-    clf = joblib.load(BASE_DIR / "cache/classifier.joblib")
+    clf = joblib.load(CACHE_PATH / "classifier.joblib")
     if dim_reduction:
-        dim_reducer = joblib.load(BASE_DIR / "cache/dim_reducer.joblib")
-    vectorizer = joblib.load(BASE_DIR / "cache/vectorizer.joblib")
+        dim_reducer = joblib.load(CACHE_PATH / "dim_reducer.joblib")
+    vectorizer = joblib.load(CACHE_PATH / "vectorizer.joblib")
     # メモを分かち書きにする
     memo = tokenize_text(memo, Tokenizer())
     # store_nameをベクトル化
