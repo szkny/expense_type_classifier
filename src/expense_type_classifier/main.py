@@ -93,7 +93,9 @@ def main() -> None:
 
 def get_expense_history() -> pd.DataFrame:
     log.info("start 'get_expense_history' method")
-    df = pd.read_csv(HOME + "/tmp/expense/expense_history.log", index_col=None)
+    expense_cache_path = pathlib.Path(user_cache_dir("expense"))
+    fname = expense_cache_path / "expense_history.log"
+    df = pd.read_csv(fname, index_col=None)
     df = df.T.reset_index().T
     df.columns = pd.Index(["date", "type", "memo", "amount"])
     df.index = pd.Index(range(len(df)))
