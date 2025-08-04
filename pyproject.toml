@@ -21,10 +21,10 @@ dependencies = [
 expense_type_classifier = "expense_type_classifier.main:main"
 
 [tool.setuptools]
-package-dir = {"" = "."}
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
