@@ -17,7 +17,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 APP_NAME = "expense_type_classifier"
 CACHE_PATH = pathlib.Path(user_cache_dir(APP_NAME))
-CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+CACHE_PATH.mkdir(parents=True, exist_ok=True)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "ERROR").upper()
 HOME = os.getenv("HOME") or "~"
