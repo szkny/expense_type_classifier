@@ -41,9 +41,9 @@ def main() -> None:
         "--json",
         dest="json_data",
         type=str,
-        required=True,
+        required=False,
         default=None,
-        help="expense data in JSON format",
+        help='expense data in JSON format (required if --validate is not set) / example: \'{"memo": "Lunch at cafe", "amount": 1500}\'',
     )
     parser.add_argument(
         "-p",
@@ -61,34 +61,51 @@ def main() -> None:
         help="enable PCA for dimensionality reduction",
         default=False,
     )
+    parser.add_argument(
+        "--validate",
+        dest="validate",
+        action="store_true",
+        help="validate the trained model with the training data",
+        default=False,
+    )
     args = parser.parse_args()
 
-    # # download_spreadsheet()
-    dim_reduction = args.dim_reduction
-    if dim_reduction:
-        args.re_train = True
-    if not args.predict_only:
-        df = get_expense_history()
-        df = preprocess_data(df)
-        train(df_train=df, dim_reduction=dim_reduction)
-    log.debug(f"--json: {args.json_data}")
-    input_data = json.loads(args.json_data)
-    log.debug(f"loaded json data: {input_data}")
-    predicted_type = predict(
-        memo=input_data.get("memo", NA_TEXT),
-        amount=input_data.get("amount", 0),
-        dim_reduction=dim_reduction,
-    )
-    log.debug(f"Predicted type: {predicted_type}")
-    # 予測結果をJSON形式で出力
-    output_data = {
-        "memo": input_data.get("memo", NA_TEXT),
-        "amount": input_data.get("amount", 0),
-        "predicted_type": predicted_type,
-    }
-    result = json.dumps(output_data, ensure_ascii=False, indent=2)
-    print(result, end="")
-    log.info("end 'main' method")
+    try:
+        dim_reduction = args.dim_reduction
+        if dim_reduction:
+            args.predict_only = False
+        if args.validate:
+            validate_model(dim_reduction=dim_reduction)
+            return
+        if not args.predict_only:
+            df = get_expense_history()
+            df = preprocess_data(df)
+            train(df_train=df, dim_reduction=dim_reduction)
+        if not args.json_data:
+            raise ValueError(
+                "--json argument is required unless --validate is set"
+            )
+        log.debug(f"--json: {args.json_data}")
+        input_data = json.loads(args.json_data)
+        log.debug(f"loaded json data: {input_data}")
+        predicted_type = predict(
+            memo=input_data.get("memo", NA_TEXT),
+            amount=input_data.get("amount", 0),
+            dim_reduction=dim_reduction,
+        )
+        log.debug(f"Predicted type: {predicted_type}")
+        # 予測結果をJSON形式で出力
+        output_data = {
+            "memo": input_data.get("memo", NA_TEXT),
+            "amount": input_data.get("amount", 0),
+            "predicted_type": predicted_type,
+        }
+        result = json.dumps(output_data, ensure_ascii=False, indent=2)
+        print(result, end="")
+    except Exception as e:
+        log.error(f"An error occurred: {e}")
+    finally:
+        log.info("end 'main' method")
 
 
 def get_expense_history() -> pd.DataFrame:
@@ -113,21 +130,22 @@ def tokenize_text(text: str, tokenizer: Tokenizer) -> str:
 
 def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     log.info("start 'preprocess_data' method")
+    df_new = df.copy()
     # 日付をdatetime型に変換
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df_new["date"] = pd.to_datetime(df_new["date"], errors="coerce")
     # 金額を数値型に変換
-    df["amount"] = (
-        pd.to_numeric(df["amount"], errors="coerce").fillna(0).astype(int)
+    df_new["amount"] = (
+        pd.to_numeric(df_new["amount"], errors="coerce").fillna(0).astype(int)
     )
     # メモを分かち書きにする
     tokenizer = Tokenizer()
-    df["memo"] = df["memo"].apply(lambda s: tokenize_text(s, tokenizer))
-    log.debug(f"Processed DataFrame:\n{df.head()}")
+    df_new["memo"] = df_new["memo"].apply(lambda s: tokenize_text(s, tokenizer))
+    log.debug(f"Processed DataFrame:\n{df_new.head()}")
     log.info("end 'preprocess_data' method")
-    return df
+    return df_new
 
 
-def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
+def train(df_train: pd.DataFrame, dim_reduction: bool = False) -> None:
     log.info("start 'train_and_save_model' method")
     df = df_train.copy()
     df = df.fillna(NA_TEXT)
@@ -137,7 +155,7 @@ def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
     X = vectorizer.fit_transform(df["memo"]).toarray()  # TF-IDFベクトル化
     log.debug(f"vectorizer features: {vectorizer.get_feature_names_out()}")
     if dim_reduction:
-        dim_reducer = PCA(n_components=10)
+        dim_reducer = PCA(n_components=30)
         X = dim_reducer.fit_transform(X)  # PCAで次元削減
     X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
     y = df["type"]  # 正解ラベル
@@ -158,7 +176,7 @@ def train(df_train: pd.DataFrame, dim_reduction=False) -> None:
     log.info("end 'train_and_save_model' method")
 
 
-def predict(memo: str, amount: int, dim_reduction=False) -> str:
+def predict(memo: str, amount: int, dim_reduction: bool = False) -> str:
     log.info("start 'predict' method")
     # モデルとvectorizerの読み込み
     clf = joblib.load(CACHE_PATH / "classifier.joblib")
@@ -173,7 +191,7 @@ def predict(memo: str, amount: int, dim_reduction=False) -> str:
         X_new = dim_reducer.transform(X_new)  # PCAで次元削減
     X_new = np.concatenate([X_new, [[amount]]], axis=1)  # ベクトルと金額を結合
     # カテゴリ予測
-    predicted_type = clf.predict(X_new)[0]
+    predicted_type = str(clf.predict(X_new)[0])
     log.info("end 'predict' method")
     return predicted_type
 
@@ -236,6 +254,43 @@ def download_spreadsheet() -> None:
     log.debug(f"DataFrame created: {df.head()}")
     df.to_csv("./train_data/spreadsheet_data.csv", index=True)
     log.info("end 'download_spreadsheet' method")
+
+
+def validate_model(dim_reduction: bool = False) -> None:
+    log.info("start 'validate_model' method")
+    # トレーニングデータの取得と前処理
+    df_org = get_expense_history()
+    df = preprocess_data(df_org)
+    train(df_train=df, dim_reduction=dim_reduction)
+    # モデルとvectorizerの読み込み
+    clf = joblib.load(CACHE_PATH / "classifier.joblib")
+    if dim_reduction:
+        dim_reducer = joblib.load(CACHE_PATH / "dim_reducer.joblib")
+    vectorizer = joblib.load(CACHE_PATH / "vectorizer.joblib")
+    # 特徴量の前処理
+    df = df.fillna(NA_TEXT)
+    amount = df[["amount"]].astype(int).values
+    # memoのテキストをTF-IDFベクトル化
+    X = vectorizer.transform(df["memo"]).toarray()  # TF-IDFベクトル化
+    if dim_reduction:
+        X = dim_reducer.transform(X)  # PCAで次元削減
+    X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
+    y = df["type"]  # 正解ラベル
+
+    # 予測
+    y_pred = clf.predict(X)
+    df_result = df_org.copy()
+    df_result["predicted_type"] = y_pred
+    df_result["tokenized_memo"] = df["memo"]
+    df_result = df_result[
+        ["date", "amount", "memo", "tokenized_memo", "type", "predicted_type"]
+    ]
+    match = y_pred == y
+    print(
+        f"Validation accuracy: {np.mean(match)} ({np.sum(match)}/{len(match)})"
+    )
+    print(f"Validation results:\n{df_result}")
+    log.info("end 'validate_model' method")
 
 
 if __name__ == "__main__":
