@@ -7,13 +7,25 @@ import argparse
 import numpy as np
 import pandas as pd
 import logging as log
+from typing import Literal
 from platformdirs import user_cache_dir
 from google.oauth2 import service_account
 
 from janome.tokenizer import Tokenizer
-from sklearn.decomposition import PCA
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import PCA
+from lightgbm import LGBMClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import f1_score
+from sklearn.model_selection import cross_val_score
+
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*",
+    category=UserWarning,
+)
 
 APP_NAME = "expense_type_classifier"
 CACHE_PATH = pathlib.Path(user_cache_dir(APP_NAME))
@@ -62,6 +74,15 @@ def main() -> None:
         default=False,
     )
     parser.add_argument(
+        "-m",
+        "--model",
+        dest="model",
+        type=str,
+        required=False,
+        default="RF",
+        help="model to use for classification (default: RF, options: LGBM)",
+    )
+    parser.add_argument(
         "--validate",
         dest="validate",
         action="store_true",
@@ -75,12 +96,12 @@ def main() -> None:
         if dim_reduction:
             args.predict_only = False
         if args.validate:
-            validate_model(dim_reduction=dim_reduction)
+            validate_model(model=args.model, dim_reduction=dim_reduction)
             return
         if not args.predict_only:
             df = get_expense_history()
             df = preprocess_data(df)
-            train(df_train=df, dim_reduction=dim_reduction)
+            train(df_train=df, model=args.model, dim_reduction=dim_reduction)
         if not args.json_data:
             raise ValueError(
                 "--json argument is required unless --validate is set"
@@ -145,8 +166,12 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     return df_new
 
 
-def train(df_train: pd.DataFrame, dim_reduction: bool = False) -> None:
-    log.info("start 'train_and_save_model' method")
+def train(
+    df_train: pd.DataFrame,
+    model: Literal["RandomForestClassifier", "LGBMClassifier"],
+    dim_reduction: bool = False,
+) -> None:
+    log.info("start 'train' method")
     df = df_train.copy()
     df = df.fillna(NA_TEXT)
     amount = df[["amount"]].astype(int).values
@@ -158,12 +183,20 @@ def train(df_train: pd.DataFrame, dim_reduction: bool = False) -> None:
         dim_reducer = PCA(n_components=30)
         X = dim_reducer.fit_transform(X)  # PCAで次元削減
     X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
-    y = df["type"]  # 正解ラベル
+    y = df["type"].values  # 正解ラベル
     log.debug(f"X shape: {X.shape}, y shape: {y.shape}")
     log.debug(f"X:\n{X}")
+    log.debug(f"y:\n{y}")
 
     # 分類器の作成・学習
-    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    if model.upper() == "RF":
+        clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    elif model.upper() == "LGBM":
+        clf = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+    else:
+        raise ValueError(
+            f"Unsupported model type: {model}. Use 'RF' (=RandomForestClassifier) or 'LGBM' (=LGBMClassifier)."
+        )
     clf.fit(X, y)
     log.info("Model trained successfully")
 
@@ -173,7 +206,7 @@ def train(df_train: pd.DataFrame, dim_reduction: bool = False) -> None:
     if dim_reduction:
         joblib.dump(dim_reducer, CACHE_PATH / "dim_reducer.joblib")
     joblib.dump(vectorizer, CACHE_PATH / "vectorizer.joblib")
-    log.info("end 'train_and_save_model' method")
+    log.info("end 'train' method")
 
 
 def predict(memo: str, amount: int, dim_reduction: bool = False) -> str:
@@ -256,12 +289,15 @@ def download_spreadsheet() -> None:
     log.info("end 'download_spreadsheet' method")
 
 
-def validate_model(dim_reduction: bool = False) -> None:
+def validate_model(
+    model: Literal["RandomForestClassifier", "LGBMClassifier"],
+    dim_reduction: bool = False,
+) -> None:
     log.info("start 'validate_model' method")
     # トレーニングデータの取得と前処理
     df_org = get_expense_history()
     df = preprocess_data(df_org)
-    train(df_train=df, dim_reduction=dim_reduction)
+    train(df_train=df, model=model, dim_reduction=dim_reduction)
     # モデルとvectorizerの読み込み
     clf = joblib.load(CACHE_PATH / "classifier.joblib")
     if dim_reduction:
@@ -275,7 +311,7 @@ def validate_model(dim_reduction: bool = False) -> None:
     if dim_reduction:
         X = dim_reducer.transform(X)  # PCAで次元削減
     X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
-    y = df["type"]  # 正解ラベル
+    y = df["type"].values  # 正解ラベル
 
     # 予測
     y_pred = clf.predict(X)
@@ -286,10 +322,18 @@ def validate_model(dim_reduction: bool = False) -> None:
         ["date", "amount", "memo", "tokenized_memo", "type", "predicted_type"]
     ]
     match = y_pred == y
+    score = f1_score(y, y_pred, average="macro")
     print(
-        f"Validation accuracy: {np.mean(match)} ({np.sum(match)}/{len(match)})"
+        f"Train accuracy score: {np.mean(match)} ({np.sum(match)}/{len(match)})"
     )
-    print(f"Validation results:\n{df_result}")
+    print(f"Train f1_macro score: {score}")
+    print(f"Train results:\n{df_result}")
+
+    # モデルの精度を交差検証で評価
+    accuracy_scores = cross_val_score(clf, X, y, cv=5, scoring="accuracy")
+    f1_scores = cross_val_score(clf, X, y, cv=5, scoring="f1_macro")
+    print(f"Cross-validation accuracy score: {np.mean(accuracy_scores)}")
+    print(f"Cross-validation f1_macro score: {np.mean(f1_scores)}")
     log.info("end 'validate_model' method")
 
 
