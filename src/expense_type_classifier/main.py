@@ -100,6 +100,8 @@ def main() -> None:
             return
         if not args.predict_only:
             df = get_expense_history()
+            if df.empty:
+                raise ValueError("No expense history found for training.")
             df = preprocess_data(df)
             train(df_train=df, model=args.model, dim_reduction=dim_reduction)
         if not args.json_data:
@@ -133,7 +135,15 @@ def get_expense_history() -> pd.DataFrame:
     log.info("start 'get_expense_history' method")
     expense_cache_path = pathlib.Path(user_cache_dir("expense"))
     fname = expense_cache_path / "expense_history.log"
-    df = pd.read_csv(fname, index_col=None)
+    df = pd.DataFrame()
+    try:
+        df = pd.read_csv(fname, index_col=None)
+    except FileNotFoundError:
+        pass
+    except pd.errors.EmptyDataError:
+        pass
+    if df.empty:
+        return df
     df = df.T.reset_index().T
     df.columns = pd.Index(["date", "type", "memo", "amount"])
     df.index = pd.Index(range(len(df)))
@@ -296,6 +306,8 @@ def validate_model(
     log.info("start 'validate_model' method")
     # トレーニングデータの取得と前処理
     df_org = get_expense_history()
+    if df_org.empty:
+        raise ValueError("No expense history found for training.")
     df = preprocess_data(df_org)
     train(df_train=df, model=model, dim_reduction=dim_reduction)
     # モデルとvectorizerの読み込み
