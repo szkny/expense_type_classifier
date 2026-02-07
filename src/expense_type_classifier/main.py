@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import logging as log
 from typing import Literal
-from platformdirs import user_cache_dir
 from google.oauth2 import service_account
+from platformdirs import user_data_dir, user_cache_dir
 
 from janome.tokenizer import Tokenizer
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -133,7 +133,7 @@ def main() -> None:
 
 def get_expense_history() -> pd.DataFrame:
     log.info("start 'get_expense_history' method")
-    expense_cache_path = pathlib.Path(user_cache_dir("expense"))
+    expense_cache_path = pathlib.Path(user_data_dir("expense"))
     fname = expense_cache_path / "expense_history.log"
     df = pd.DataFrame()
     try:
