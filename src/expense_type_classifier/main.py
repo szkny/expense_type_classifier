@@ -1,25 +1,16 @@
+from __future__ import annotations
+
 import os
 import json
-import joblib
 import pathlib
-import gspread
 import argparse
-import numpy as np
-import pandas as pd
 import logging as log
-from typing import Literal
-from google.oauth2 import service_account
-from platformdirs import user_data_dir, user_cache_dir
-
-from janome.tokenizer import Tokenizer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import PCA
-from lightgbm import LGBMClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import f1_score
-from sklearn.model_selection import cross_val_score
-
 import warnings
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from janome.tokenizer import Tokenizer
 
 warnings.filterwarnings(
     "ignore",
@@ -28,11 +19,8 @@ warnings.filterwarnings(
 )
 
 APP_NAME = "expense_type_classifier"
-CACHE_PATH = pathlib.Path(user_cache_dir(APP_NAME))
-CACHE_PATH.mkdir(parents=True, exist_ok=True)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "ERROR").upper()
-HOME = os.getenv("HOME") or "~"
 NA_TEXT = "No Memo"
 log.basicConfig(
     level=LOG_LEVEL,
@@ -132,6 +120,9 @@ def main() -> None:
 
 
 def get_expense_history() -> pd.DataFrame:
+    import pandas as pd
+    from platformdirs import user_data_dir
+
     log.info("start 'get_expense_history' method")
     expense_cache_path = pathlib.Path(user_data_dir("expense"))
     fname = expense_cache_path / "expense_history.log"
@@ -160,6 +151,9 @@ def tokenize_text(text: str, tokenizer: Tokenizer) -> str:
 
 
 def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+    from janome.tokenizer import Tokenizer
+
     log.info("start 'preprocess_data' method")
     df_new = df.copy()
     # 日付をdatetime型に変換
@@ -181,6 +175,11 @@ def train(
     model: Literal["RandomForestClassifier", "LGBMClassifier"],
     dim_reduction: bool = False,
 ) -> None:
+    import joblib
+    import numpy as np
+    from platformdirs import user_cache_dir
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
     log.info("start 'train' method")
     df = df_train.copy()
     df = df.fillna(NA_TEXT)
@@ -190,6 +189,8 @@ def train(
     X = vectorizer.fit_transform(df["memo"]).toarray()  # TF-IDFベクトル化
     log.debug(f"vectorizer features: {vectorizer.get_feature_names_out()}")
     if dim_reduction:
+        from sklearn.decomposition import PCA
+
         dim_reducer = PCA(n_components=30)
         X = dim_reducer.fit_transform(X)  # PCAで次元削減
     X = np.concatenate([X, amount], axis=1)  # ベクトルと金額を結合
@@ -200,8 +201,12 @@ def train(
 
     # 分類器の作成・学習
     if model.upper() == "RF":
+        from sklearn.ensemble import RandomForestClassifier
+
         clf = RandomForestClassifier(n_estimators=100, random_state=42)
     elif model.upper() == "LGBM":
+        from lightgbm import LGBMClassifier
+
         clf = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
     else:
         raise ValueError(
@@ -211,21 +216,28 @@ def train(
     log.info("Model trained successfully")
 
     # 保存
-    os.makedirs(CACHE_PATH, exist_ok=True)
-    joblib.dump(clf, CACHE_PATH / "classifier.joblib")
+    cache_path = pathlib.Path(user_cache_dir(APP_NAME))
+    os.makedirs(cache_path, exist_ok=True)
+    joblib.dump(clf, cache_path / "classifier.joblib")
     if dim_reduction:
-        joblib.dump(dim_reducer, CACHE_PATH / "dim_reducer.joblib")
-    joblib.dump(vectorizer, CACHE_PATH / "vectorizer.joblib")
+        joblib.dump(dim_reducer, cache_path / "dim_reducer.joblib")
+    joblib.dump(vectorizer, cache_path / "vectorizer.joblib")
     log.info("end 'train' method")
 
 
 def predict(memo: str, amount: int, dim_reduction: bool = False) -> str:
+    import joblib
+    import numpy as np
+    from janome.tokenizer import Tokenizer
+    from platformdirs import user_cache_dir
+
     log.info("start 'predict' method")
+    cache_path = pathlib.Path(user_cache_dir(APP_NAME))
     # モデルとvectorizerの読み込み
-    clf = joblib.load(CACHE_PATH / "classifier.joblib")
+    clf = joblib.load(cache_path / "classifier.joblib")
     if dim_reduction:
-        dim_reducer = joblib.load(CACHE_PATH / "dim_reducer.joblib")
-    vectorizer = joblib.load(CACHE_PATH / "vectorizer.joblib")
+        dim_reducer = joblib.load(cache_path / "dim_reducer.joblib")
+    vectorizer = joblib.load(cache_path / "vectorizer.joblib")
     # メモを分かち書きにする
     memo = tokenize_text(memo, Tokenizer())
     # store_nameをベクトル化
@@ -240,6 +252,10 @@ def predict(memo: str, amount: int, dim_reduction: bool = False) -> str:
 
 
 def download_spreadsheet() -> None:
+    import gspread
+    import pandas as pd
+    from google.oauth2 import service_account
+
     log.info("start 'download_spreadsheet' method")
     credentials = service_account.Credentials.from_service_account_file(
         "credentials.json",
@@ -303,6 +319,12 @@ def validate_model(
     model: Literal["RandomForestClassifier", "LGBMClassifier"],
     dim_reduction: bool = False,
 ) -> None:
+    import joblib
+    import numpy as np
+    from platformdirs import user_cache_dir
+    from sklearn.metrics import f1_score
+    from sklearn.model_selection import cross_val_score
+
     log.info("start 'validate_model' method")
     # トレーニングデータの取得と前処理
     df_org = get_expense_history()
@@ -310,11 +332,12 @@ def validate_model(
         raise ValueError("No expense history found for training.")
     df = preprocess_data(df_org)
     train(df_train=df, model=model, dim_reduction=dim_reduction)
+    cache_path = pathlib.Path(user_cache_dir(APP_NAME))
     # モデルとvectorizerの読み込み
-    clf = joblib.load(CACHE_PATH / "classifier.joblib")
+    clf = joblib.load(cache_path / "classifier.joblib")
     if dim_reduction:
-        dim_reducer = joblib.load(CACHE_PATH / "dim_reducer.joblib")
-    vectorizer = joblib.load(CACHE_PATH / "vectorizer.joblib")
+        dim_reducer = joblib.load(cache_path / "dim_reducer.joblib")
+    vectorizer = joblib.load(cache_path / "vectorizer.joblib")
     # 特徴量の前処理
     df = df.fillna(NA_TEXT)
     amount = df[["amount"]].astype(int).values
